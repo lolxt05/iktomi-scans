@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create necessary directories
+RUN mkdir -p /app/cache && \
+    chmod 777 /app/cache
+
+# Copy requirements first to leverage Docker cache
+COPY req.txt .
+RUN pip install --no-cache-dir -r req.txt
+
+# Copy only the controller-specific files
+COPY controller.py functions.py config.ini ./
+
+# Set environment variables (these should be overridden at runtime)
+ENV TELEGRAM_BOT_TOKEN=""
+ENV TELEGRAM_CHAT_ID=""
+ENV PYTHONUNBUFFERED=1
+ 
+# Use tini as init system
+RUN apt-get update && apt-get install -y tini
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+CMD ["python", "-u", "controller.py"] 
