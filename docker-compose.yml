@@ -22,3 +22,13 @@ services:
       ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO-DB-PASSWD}
       ME_CONFIG_MONGODB_URL: mongodb://${MONGO-DB-USR}:${MONGO-DB-PASSWD}@mongo:27017/
       ME_CONFIG_BASICAUTH: false
+
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    container_name: iktomi-controller
+    depends_on: 
+      - mongo
+    ports:
+      - 5000:5000
