@@ -65,28 +65,50 @@ def get_cache(cache_to_acsess):
     specific_cache = cache[cache_to_acsess]
     return specific_cache
 
-def get_asura_main_db():
+def get_asura_main_urls_db():
     client = connect_to_db()
-    db = client.asura_main_db
+    db = client.asura_main_urls_db
     return db
 
 def fetch_urls_from_page():
     return "leck eier"
 
-def fetch_manhwa_all_chapters(asura_main_db):
+
+def fetch_manhwa_all_chapters(name , url):
+        asura_main_urls_db = get_asura_main_urls_db()
+        manhwa_db = asura_main_urls_db[name]
+        try:
+            chapter_num = max(
+                int(name1.split('_')[1]) 
+                for name1 in manhwa_db.list_collection_names() 
+                if name1.startswith('chapter_') and name1.split('_')[1].isdigit()
+            )
+        except ValueError:
+            chapter_num = 0
+
+        print(f"current chapter num is ${chapter_num}")
+        consecutive_empty_chapters = 0
+        while consecutive_empty_chapters < 5:
+
+            urls = fetch_urls_from_page(url + f"/chapter/${chapter_num}")
+            if urls is None:
+                chapter_num += 1
+                consecutive_empty_chapters += 1
+            else:
+                chapter_db = manhwa_db["chapter_" + str(chapter_num)]
+                chapter_num += 1
+                index = 0
+                for url in urls:
+                    chapter_db[str(index)] = url
+                    index += 1
         
-        urls = fetch_urls_from_page(url + "/chapter/1")
-        manhwa = asura_main_db[name]
-        chapter = manhwa["chapter_"+chapter]
 
 
 
 def get_main_urls():
     asura_init_urls = get_cache("asura_init_urls")
-    asura_main_db = get_asura_main_db()
     for name , url in asura_init_urls:
-
-        fetch_manhwa_all_chapters(asura_main_db)
+        fetch_manhwa_all_chapters(name , url)
 
 
 
@@ -96,10 +118,7 @@ def get_main_urls():
 
 
 if __name__ == "__main__":
-    get_initial_urls()
-    asura_cache = get_cache("asura_init_urls")
-    for key, value in asura_cache.find_one().items():
-        print(f"{key}: {value}")
+    print("Hello, World")
 
     
 
