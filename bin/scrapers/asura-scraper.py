@@ -190,7 +190,7 @@ def fetch_manhwa_all_chapters(name, initial_url):
                 index += 1
                 total_urls += 1
             consecutive_empty_pages = 0
-    logging.info(f"Manhwa {name} fully fetched. Max chapter: {chapter_num - 6}, total URLs: {total_urls}. Time taken: {time.time() - t_fetch_manhwa_all_chapters}s")
+    logging.info(f"Manhwa {name} fully fetched. Max chapter: {chapter_num - 6}, total URLs: {total_urls}. Time taken: {time.time() - t_fetch_manhwa_all_chapters}s Time / chapter = ${(time.time() - t_fetch_manhwa_all_chapters)/(chapter_num - 6)}")
 
     
 
