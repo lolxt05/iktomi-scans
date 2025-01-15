@@ -30,7 +30,7 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 
 # Configure the logging with both handlers
-logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
+logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 
 
 
@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler
 """
 
 def get_initial_urls_from_page(page_count):
-    logging.debug(f"get initai urls from page called for page ${page_count}")
+    logging.info(f"get initai urls from page called for page ${page_count}")
     base_url = f"https://asuracomic.net/series?page={page_count}&name="
 
     html_content = requests.get(base_url).text
@@ -61,7 +61,7 @@ def get_initial_urls_from_page(page_count):
 
 
 def get_initial_urls():
-    logging.debug("get initai urls called")
+    logging.info("get initai urls called")
     consecutive_empty_count = 0
     page_count = 0
     all_links = {}
@@ -83,23 +83,23 @@ def get_initial_urls():
     asura_cache.insert_one(all_links)
     end_page_num = int(page_count) - int(consecutive_empty_count)
     total_link_count = len(all_links)
-    logging.debug(f"get initai urls ended total pages ${end_page_num} and total individual urls = ${total_link_count}")
+    logging.info(f"get initai urls ended total pages ${end_page_num} and total individual urls = ${total_link_count}")
     return
 
 def connect_to_db():
-    logging.debug("connect to db called")
+    logging.info("connect to db called")
     client = MongoClient(os.environ.get("MONGO-DB-URL"))
     return client
 
 def get_cache(cache_to_acsess):
-    logging.debug(f"get cache for ${cache_to_acsess} called")
+    logging.info(f"get cache for ${cache_to_acsess} called")
     client = connect_to_db()
     cache = client.cache
     specific_cache = cache[cache_to_acsess]
     return specific_cache
 
 def read_cache_json(cache_to_access):
-    logging.debug(f"get cache for {cache_to_access} called")
+    logging.info(f"get cache for {cache_to_access} called")
     client = connect_to_db()
     db = client.cache
     doc = db[cache_to_access].find_one()
@@ -109,14 +109,13 @@ def read_cache_json(cache_to_access):
 
 
 def get_asura_main_urls_db():
-    logging.debug("get asura main url db called")
+    logging.info("get asura main url db called")
     client = connect_to_db()
     db = client.asura_main_urls_db
     return db
 
 def fetch_urls_from_page(url):
-    logging.debug(f"fetch urls from page called ${url}")
-    exit(0)
+    logging.info(f"fetch urls from page called ${url}")
     webp_pattern = r"https://gg\.asuracomic\.net/storage/media/\d{3,6}/conversions/[0-9a-zA-Z\-_]+-optimized\.webp"
     jpg_pattern = r"https://gg\.asuracomic\.net/storage/media/\d{3,6}/[0-9a-zA-Z\-_]+\.jpg"
     png_pattern = r"https://gg\.asuracomic\.net/storage/media/\d{3,6}/[0-9a-zA-Z\-_]+\.png"
@@ -133,7 +132,7 @@ def fetch_urls_from_page(url):
                        kopya_webp_pattern, end_webp_pattern]:
             all_matches.extend(re.findall(pattern, text))
 
-        if all_matches is []:
+        if len(all_matches) is 0:
             return None
         
         combined_links = list(dict.fromkeys(all_matches))
@@ -156,44 +155,44 @@ def fetch_urls_from_page(url):
         logging.error(f"An error occurred while fetching chapter images with the function fetch_urls_from_page Error: {e}")
         return None
 
-def fetch_manhwa_all_chapters(name, url):
-    t_fetch_manhwa_all_chapters = time.process_time()
-    logging.debug(f"fetch manhwa all chapters called for {name}")
+def fetch_manhwa_all_chapters(name, initial_url):
+
+    t_fetch_manhwa_all_chapters = time.time()
+    logging.info(f"fetch manhwa all chapters called for {name}")
     asura_main_urls_db = get_asura_main_urls_db()
-    manhwa_db = asura_main_urls_db[name]
+    chapter_num = 0
 
-    chapter_num = 1
     try:
-        chapter_num = max(
-            int(name1.split('_')[1])
-            for name1 in asura_main_urls_db.list_collection_names()
-            if name1.startswith('chapter_') and name1.split('_')[1].isdigit()
-        )
-        logging.debug(f"existing chapters found in db starting fetch at chapter {chapter_num}")
-    except ValueError:
-        logging.debug("No existing chapters found in db. Starting fetch at chapter 0.")
+        templist = []
+        for name1 in asura_main_urls_db.list_collection_names():
+            if name1.startswith(name + ".chapter_"):
+                templist.append(int(name1.split("_")[-1]))
+        chapter_num = max(templist)
+        logging.info(f"existing chapters found in db starting fetch at chapter {chapter_num}")
+    except Exception as e:
+        logging.error(f"No existing chapters found in db. Starting fetch at chapter 0. \n Error: \n ${e}")
 
-    logging.debug(f"current manhwa is {name}, starting at chapter {chapter_num}")
+    logging.info(f"current manhwa is {name}, starting at chapter {chapter_num}")
     consecutive_empty_pages = 0
     total_urls = 0
 
     while consecutive_empty_pages < 5:
-        urls = fetch_urls_from_page(url + f"/chapter/{chapter_num}")
+        urls = fetch_urls_from_page(initial_url + f"/chapter/{chapter_num}")
         if urls is None:
             chapter_num += 1
             consecutive_empty_pages += 1
         else:
-            chapter_db = manhwa_db[f"chapter_{chapter_num}"]
+            chapter_db = get_asura_main_urls_db()[name][f"chapter_{chapter_num}"]
             chapter_num += 1
             index = 0
             for url in urls:
                 chapter_db.insert_one({"index": index, "url": url})
                 index += 1
-                total_urls += 1  # Increment total_urls, not index
-            consecutive_empty_pages = 0  # Reset consecutive_empty_pages if URLs are found
+                total_urls += 1
+            consecutive_empty_pages = 0
+    logging.info(f"Manhwa {name} fully fetched. Max chapter: {chapter_num - 6}, total URLs: {total_urls}. Time taken: {time.time() - t_fetch_manhwa_all_chapters}s")
 
-    logging.info(f"Manhwa {name} fully fetched. Max chapter: {chapter_num}, total URLs: {total_urls}. Time taken: {time.process_time() - t_fetch_manhwa_all_chapters}s")
-    exit(0)
+    
 
 
             
@@ -203,7 +202,7 @@ def fetch_manhwa_all_chapters(name, url):
 
 def get_main_urls():
     t_get_main_urls = time.process_time()
-    logging.debug("get main url called")
+    logging.info("get main url called")
     asura_init_urls = read_cache_json("asura_init_urls")
     logging.info(f"asurascans all manhwas number = ${len(asura_init_urls)}")
     for name , url in asura_init_urls.items():
@@ -217,8 +216,8 @@ def get_main_urls():
 
 
 if __name__ == "__main__":
-    logging.debug("Programm started")
-    get_initial_urls()
+    logging.info("Programm started")
+    #get_initial_urls()
     get_main_urls()
 
     
