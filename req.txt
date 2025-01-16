@@ -2,3 +2,4 @@ flask
 BeautifulSoup4
 requests
 pymongo
+motor

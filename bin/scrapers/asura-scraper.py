@@ -8,6 +8,9 @@ import time
 import json
 from bson.json_util import dumps
 from sys import exit
+from motor.motor_asyncio import AsyncIOMotorClient
+
+
 
 
 
@@ -154,6 +157,9 @@ def fetch_urls_from_page(url):
     except Exception as e:
         logging.error(f"An error occurred while fetching chapter images with the function fetch_urls_from_page Error: {e}")
         return None
+    
+
+
 
 def fetch_manhwa_all_chapters(name, initial_url):
 
@@ -192,13 +198,6 @@ def fetch_manhwa_all_chapters(name, initial_url):
             consecutive_empty_pages = 0
     logging.info(f"Manhwa {name} fully fetched. Max chapter: {chapter_num - 6}, total URLs: {total_urls}. Time taken: {time.time() - t_fetch_manhwa_all_chapters}s Time / chapter = ${(time.time() - t_fetch_manhwa_all_chapters)/(chapter_num - 6)}")
 
-    
-
-
-            
-    
-
-
 
 def get_main_urls():
     t_get_main_urls = time.process_time()
@@ -210,12 +209,18 @@ def get_main_urls():
     logging.info(f"fetching asura scans finnished in ${time.process_time() - t_get_main_urls}s")
 
 
+async def download_manwha(name):
+    return 0
 
-
-
+async def start_main_download():
+    asura_main_urls_db = get_asura_main_urls_db()
+    print(asura_main_urls_db.list_collections)
+    exit(0)
 
 
 if __name__ == "__main__":
+    start_main_download()
+    exit(0)
     logging.info("Programm started")
     #get_initial_urls()
     get_main_urls()
