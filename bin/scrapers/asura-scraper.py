@@ -115,6 +115,11 @@ def get_asura_main_urls_db():
     db = client.asura_main_urls_db
     return db
 
+def get_asura_main_data():
+    logging.info("get asura main data db called")
+    db = client.asura_main_data
+    return db
+
 async def fetch_urls_from_page(url):
     logging.info(f"fetch urls from page called {url}")
     webp_pattern = r"https://gg\.asuracomic\.net/storage/media/\d{3,6}/conversions/[0-9a-zA-Z\-_]+-optimized\.webp"
@@ -188,10 +193,8 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     while consecutive_empty_pages < 5:
         urls = await fetch_urls_from_page(initial_url + f"/chapter/{chapter_num}")
         if urls is None:
-            chapter_num += 1
             consecutive_empty_pages += 1
         else:
-            chapter_num += 1
             index = 0
             
             for url in urls:
@@ -199,6 +202,7 @@ async def fetch_manhwa_all_chapters(name, initial_url):
                 index += 1
                 total_urls += 1
             consecutive_empty_pages = 0
+        chapter_num += 1
     if items_to_insert != []:
         manhwa_db.insert_many(items_to_insert)
 
@@ -231,13 +235,37 @@ async def get_max_chapter_number(manhwa_name):
     chapter_number = 1
 
     while True:
-        collection_name = f"{manhwa_name}.chapter_{chapter_number}"
-        if collection_name in await db.list_collection_names():
+        collection_name = f"chapter_{chapter_number}"
+        if collection_name in await db[manhwa_name].distinct("chapter"):
+
+            await download_chapter_and_save_to(
+                manhwa_name,
+                collection_name,
+                await db[manhwa_name].find({"chapter" : collection_name}).to_list()
+                )
+            
             chapter_number += 1
         else:
-            break
+            if chapter_number <= 10:
+                chapter_number +=1
+            else:
+                break
 
-    return chapter_number
+    return chapter_number - 1
+
+
+# items_to_insert.append({"index": index, "url": url, "chapter": f"chapter_{chapter_num}"})
+#                 index += 1
+#                 total_urls += 1
+#             consecutive_empty_pages = 0
+#         chapter_num += 1
+#     if items_to_insert != []:
+#         manhwa_db.insert_many(items_to_insert)
+
+async def download_chapter_and_save_to(manhwa_name , collection_name , url_mongo_db_object_as_list):
+    db_to_save_to =  get_asura_main_data[manhwa_name]
+    for url_object in url_mongo_db_object_as_list:
+
 
 
 async def start_main_download():
@@ -255,12 +283,29 @@ async def start_main_download():
         print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
     exit(0)
 
+async def get_current_url_status():
+    asura_main_urls_db = get_asura_main_urls_db()
+    manhwa_collection_names = set()
+    index = 0
+    
+    for item in await asura_main_urls_db.list_collection_names():
+        collection_name = item.split(".")[0]
+        manhwa_collection_names.add(collection_name)
+        index += 1
+    
+    print(index)
+    for manhwa in manhwa_collection_names:
+        print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
+    exit(0)
 
 async def main():
-    #await start_main_download()
+    #manhwa = "taming-master"
+    #print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
+    await start_main_download()
+    exit(0)
     logging.info("Program started")
-    get_initial_urls()
-    await get_main_urls()
+    #get_initial_urls()
+    #await get_main_urls()
 
 
 if __name__ == "__main__":
