@@ -2,6 +2,7 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
+from pymongo.errors import BulkWriteError
 import os
 import logging
 import time
@@ -11,9 +12,10 @@ from sys import exit
 from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 import aiohttp
+import mmh3
 
 client = AsyncIOMotorClient(os.environ.get("MONGO-DB-URL"))
-semaphore = asyncio.Semaphore(10)
+semaphore = asyncio.Semaphore(30)
 
 python_name = os.path.basename(__file__)
 
@@ -66,7 +68,7 @@ async def get_initial_urls():
             for link in links:
                 all_links["-".join(link.rstrip("/").split("/")[-1].split("-")[:-1])] = domain_url + link
 
-    asura_cache = get_cache("asura_init_urls")
+    asura_cache = await get_cache("asura_init_urls")
     asura_cache.delete_one({})
     asura_cache.insert_one(all_links)
     end_page_num = int(page_count) - int(consecutive_empty_count)
@@ -74,7 +76,7 @@ async def get_initial_urls():
     logging.info(f"get initai urls ended total pages ${end_page_num} and total individual urls = ${total_link_count}")
     return
 
-def get_cache(cache_to_acsess):
+async def get_cache(cache_to_acsess):
     logging.info(f"get cache for ${cache_to_acsess} called")
     cache = client.cache
     specific_cache = cache[cache_to_acsess]
@@ -88,9 +90,15 @@ async def read_cache_json(cache_to_access):
         doc.pop("_id")
     return doc
 
-def get_asura_main_urls_db():
+async def get_asura_main_urls_db():
     logging.info("get asura main url db called")
     db = client.asura_main_urls_db
+    return db
+
+
+async def get_asura_main_db():
+    logging.info("get asura main url db called")
+    db = client.asura_main_db
     return db
 
 def get_asura_main_data():
@@ -146,7 +154,7 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     logging.info(f"fetch manhwa all chapters called for {name}")
     
     chapter_num = 0
-    manhwa_db = get_asura_main_urls_db()[name]
+    manhwa_db = await get_asura_main_urls_db()[name]
     
     try:
         existing_chapters = await manhwa_db.distinct("chapter")
@@ -193,47 +201,8 @@ async def get_main_urls():
         await fetch_manhwa_all_chapters(name, url)
     logging.info(f"fetching asura scans finnished in ${time.process_time() - t_get_main_urls}s")
 
-async def download_manwha(name):
-    return 0
-
-async def collection_exists(collection_name):
-    db = get_asura_main_urls_db()
-    return collection_name in await db.list_collection_names()
-
-async def get_max_chapter_number(manhwa_name):
-    db = get_asura_main_urls_db()
-    chapter_number = 1
-
-    while True:
-        collection_name = f"chapter_{chapter_number}"
-        if collection_name in await db[manhwa_name].distinct("chapter"):
-            await download_chapter_and_save_to(
-                manhwa_name,
-                collection_name,
-                await db[manhwa_name].find({"chapter" : collection_name}).to_list()
-            )
-            chapter_number += 1
-        else:
-            if chapter_number <= 10:
-                chapter_number +=1
-            else:
-                break
-    return chapter_number - 1
-
-async def get_pic_and_save_it(dataframe ,url , db):
-    try:
-        result = aiohttp.request(url)
-        print(result)
-    except Exception as e:
-        logging.error("fault when fetching " + url + " Error: " + str(e))
-
-async def download_chapter_and_save_to(manhwa_name , collection_name , url_mongo_db_object_as_list):
-    db_to_save_to = get_asura_main_data[manhwa_name]
-    for url_object in url_mongo_db_object_as_list:
-        get_pic_and_save_it()
-
 async def start_main_download():
-    asura_main_urls_db = get_asura_main_urls_db()
+    asura_main_urls_db = await get_asura_main_urls_db()
     manhwa_collection_names = set()
     index = 0
     
@@ -243,45 +212,97 @@ async def start_main_download():
         index += 1
     
     for manhwa in manhwa_collection_names:
-        print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
-        full_comparing_and_fetching_of_a_manhwa(manhwa)
+        #print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
+        await full_comparing_and_fetching_of_a_manhwa(manhwa)
+        exit(0)
 
-    exit(0)
+async def do_find(cursor):
+    list = []
+    for document in await cursor.to_list(length=100):
+        list.append(document)
+    return list
+
+async def download_a_chapter(db , collection_name, manhwa):
+    docs = await do_find(db.find({"chapter" : collection_name}))
+    if docs == []:
+        logging.error("no docs found for " + manhwa + collection_name)
+    try:
+        tasks = []
+        for doc in docs:
+            tasks.append(download_a_chapter_sub(doc , manhwa))
+        chapter_data = await asyncio.gather(*tasks)
+        db = await get_asura_main_db()
+        manhwa_db = db[manhwa]
+        try:
+            await manhwa_db.insert_many(chapter_data , ordered=False)
+        except BulkWriteError as bwe:
+            logging.error("BulkWriteError why did this happen pleas look for me if more than sometimes im at download_a_chapter in asura-scraper.py")      
+
+    except Exception as e:
+        logging.error("Error with semaphore / semaphore Error at asura-scraper.py at the : download_a_chapter function :"+ str(type(e)))
+
+async def download_a_chapter_sub(doc, manhwa):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(doc['url']) as response:
+            if response.status == 200:
+                content = await response.read()
+                return_dict = {
+                    "index": doc["index"],
+                    "content": content,
+                    "chapter": doc["chapter"],
+                    "hash": mmh3.mmh3_x64_128_digest(content),
+                    "content_type": str(response.headers.get('Content-Type', 'unknown')),
+                    "_id": f"{doc['chapter']}_{doc['index']}"
+                }
+                return return_dict
+            else:
+                logging.error("http request failed with code " + str(response.status) + "url was " + doc["url"] + "in manhwa " + manhwa)
+    
+
+async def get_all_downloaded_chapters(manhwa):
+    db = await get_asura_main_db()
+    return await db[manhwa].distinct("chapter")
 
 async def full_comparing_and_fetching_of_a_manhwa(manhwa):
-    async with aiohttp.ClientSession() as session:
-        # 'urls' is not defined in the provided snippet, leaving as is
-        tasks = [fetch(url, session) for url in urls]
-        results = await asyncio.gather(*tasks)
-        return results
-
-async def get_current_url_status():
-    asura_main_urls_db = get_asura_main_urls_db()
-    manhwa_collection_names = set()
-    index = 0
+    main_urls_db = await get_asura_main_urls_db()
+    manhwa = "a-comic-artists-survival-guide"
+    manhwa_to_download = main_urls_db[manhwa]
     
-    for item in await asura_main_urls_db.list_collection_names():
-        collection_name = item.split(".")[0]
-        manhwa_collection_names.add(collection_name)
-        index += 1
-    
-    print(index)
-    for manhwa in manhwa_collection_names:
-        print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
-    exit(0)
+    chapter_number = 0
+    try:
+        consecutive_no_urls = 0
+        logging.info("temp consecutive no urls" + str(consecutive_no_urls))
+        while True:
+            collection_name = f"chapter_{chapter_number}"
+            if (
+                collection_name in await manhwa_to_download.distinct("chapter")
+                and
+                collection_name not in await get_all_downloaded_chapters(manhwa)
+                ):
+                logging.info("download_a_chapter called in asura-scraper.py in full_comparing_and_fetching_of_a_manhwa with the params: " + str(manhwa) + " " + str(chapter_number))
+                await download_a_chapter(manhwa_to_download , collection_name , manhwa)
+                consecutive_no_urls = 0
+                chapter_number += 1
+            else:
+                if consecutive_no_urls <= 10000:
+                    consecutive_no_urls +=1
+                    chapter_number += 1
+                else:
+                    break
+        return chapter_number - 1
+    except Exception as e:
+        logging.error("full_comparing_and_fetching_of_a_manhwa failed because: " + str(e))
 
 async def main():
     # manhwa = "taming-master"
-    # print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
-    # await get_pic_and_save_it({} , "https://gg.asuracomic.net/storage/media/65966/conversions/01-optimized.webp" , "db")
     # exit(0)
     # await start_main_download()
     # exit(0)
     logging.info("Program started")
-    get_initial_urls()
-    await get_main_urls()
+    await get_initial_urls()
+    await start_main_download()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    exit(0)
+    #asyncio.run(main())
+    #exit(0)
     asyncio.run(start_main_download())
