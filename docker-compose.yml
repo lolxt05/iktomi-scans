@@ -1,4 +1,4 @@
-services: 
+services:
   mongo:
     image: mongo
     restart: always
@@ -23,14 +23,24 @@ services:
       ME_CONFIG_MONGODB_URL: mongodb://${MONGO-DB-USR}:${MONGO-DB-PASSWD}@mongo:27017/
       ME_CONFIG_BASICAUTH: false
 
-  controller:
+  iktomi-controller:
     build:
       context: .
       dockerfile: Dockerfile.controller
-    container_name: iktomi-controller
-    depends_on: 
+    depends_on:
       - mongo
     ports:
       - 5000:5000
     environment:
+      MONGO-DB-URL: mongodb://${MONGO-DB-USR}:${MONGO-DB-PASSWD}@mongo:27017/
+
+  iktomi-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    depends_on:
+      -  mongo
+    ports:
+      - 3333:80
+    enviroment:
       MONGO-DB-URL: mongodb://${MONGO-DB-USR}:${MONGO-DB-PASSWD}@mongo:27017/
