@@ -13,9 +13,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 import aiohttp
 import mmh3
+import random
 
 client = AsyncIOMotorClient(os.environ.get("MONGO-DB-URL"))
-semaphore = asyncio.Semaphore(30)
+semaphore = asyncio.Semaphore(5)
 
 python_name = os.path.basename(__file__)
 
@@ -110,13 +111,17 @@ def get_night_main_data():
     return db
 
 async def fetch_urls_from_page(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            html_content = await response.text()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                html_content = await response.text()
+    except Exception as e:
+        logging.error("fetch_urls_from_page" + url + " Error: " + str(e))
+        return []
 
     match = re.search(r"ts_reader\.run\((\{.*?\})\);", html_content, re.DOTALL)
     if not match:
-        logging.error("ts_reader.run() call not found")
+        logging.error("ts_reader.run() call not found " +  url)
         return []
 
     try:
@@ -138,55 +143,63 @@ async def fetch_urls_from_page(url):
 
 async def fetch_manhwa_all_chapters(name, initial_url):
     t_fetch_manhwa_all_chapters = time.time()
+
     async with aiohttp.ClientSession() as session:
         async with session.get(initial_url) as response:
             html_content = await response.text()
 
-    pattern = re.compile(
-        r"https:\/\/nightsup\.net\/(?:(\d+)-)?([\w-]+)(?:-chapter-?|-)(\d+)\/?"
+    pattern1 = re.compile(
+        r"https:\/\/nightsup\.net\/(?:[a-zA-Z0-9-]+-)+?(chapter-?\d+)\/?"
     )
-    matches = set(pattern.findall(html_content))
+    pattern2 = re.compile(
+        r"https:\/\/nightsup\.net\/(?:[a-zA-Z0-9-]+-)+?(\d+)\/?"
+    )
+    pattern3 = re.compile(
+        r"https:\/\/nightsup\.net\/([a-zA-Z0-9-]+)-(chapter-?\d+)\/?"
+    )
 
-    chapters = {}
-    for prefix, series, chap in matches:
-        url_candidate = f"https://nightsup.net/{prefix + '-' if prefix else ''}{series}-chapter-{chap}/"
-        if "privacy-policy" in url_candidate:
-            continue
+    async with aiohttp.ClientSession(headers={
+        "User-Agent": random.choice([
+            "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
+            "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:119.0) Gecko/20100101 Firefox/119.0",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ]),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Referer": initial_url,
+        "DNT": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin"
+    }) as session:
+        async with session.get(initial_url) as response:
+            html_content = await response.text()
 
-        normalized_series = re.sub(r'(?:-chapter)+$', '', series)
-        url_candidate = f"https://nightsup.net/{prefix + '-' if prefix else ''}{normalized_series}-chapter-{chap}/"
-        
-        chap_num = int(chap)
+    urls = []
 
-        if chap_num in chapters:
-            existing_url = chapters[chap_num]
-            existing_match = re.search(r"https:\/\/nightsup\.net\/(?:(\d+)-)?([\w-]+)-chapter-(\d+)\/?", existing_url)
-            if existing_match:
-                existing_series = existing_match.group(2)
-                if len(normalized_series) < len(existing_series):
-                    chapters[chap_num] = url_candidate
-        else:
-            chapters[chap_num] = url_candidate
+    for pattern in (pattern1, pattern2, pattern3):
+        for match in pattern.finditer(html_content):
+                urls.append(match.group(0))
 
-    sorted_chapters = [chapters[num] for num in sorted(chapters)]
+
+    sorted_chapters = sorted(urls, key=lambda s: int(re.findall(r'\d+', s)[-1]))
+
     
     logging.info(name + " got all urls total urls count: " + str(len(sorted_chapters)))
-    items_to_insert = []
 
     logging.info(f"current manhwa is {name}, starting at chapter {sorted_chapters[0]} and the manhwa goes to {sorted_chapters[-1]} max")
 
+    tasks = []
     for chapter_url in sorted_chapters:
-        chapter_str = "chapter_" + chapter_url.split("-")[-1].replace("/" , "")
-        urls = await fetch_urls_from_page(chapter_url)
-        index = 0
-        
-        for url in urls:
-            items_to_insert.append({"index": index, "url": url, "chapter": chapter_str})
-            index += 1
+        tasks.append(fetch_manhwa_all_chapters_sub(chapter_url))
+    results = await asyncio.gather(*tasks)
+    items_to_insert = [item for sublist in results for item in sublist]
+    manhwa_db = await get_night_main_urls_db()
+    manhwa_db[name].insert_many(items_to_insert , ordered=False)
     
-    manhwa_db = await get_night_main_urls_db()[name]
-    manhwa_db.insert_many(items_to_insert)
-
     logging.info(
         f"Manhwa {name} fully fetched. Max chapter: {sorted_chapters[-1]}, total URLs: {str(len(items_to_insert))}. "
         f"Time taken: {time.time() - t_fetch_manhwa_all_chapters}s "
@@ -194,6 +207,19 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     )
 
 
+
+async def fetch_manhwa_all_chapters_sub(chapter_url):
+    items_to_insert = []
+    chapter_str = "chapter_" + chapter_url.split("-")[-1].replace("/" , "")
+    urls = await fetch_urls_from_page(chapter_url)
+    index = 0
+    
+    for url in urls:
+        items_to_insert.append({"index": index, "url": url, "chapter": chapter_str})
+        index += 1
+
+    return items_to_insert
+    
 
 
 
@@ -204,7 +230,6 @@ async def get_main_urls():
     logging.info(f"asurascans all manhwas number = ${len(night_init_urls)}")
     for name, url in night_init_urls.items():
         await fetch_manhwa_all_chapters(name, url)
-        exit(0)
     logging.info(f"fetching asura scans finnished in ${time.process_time() - t_get_main_urls}s")
 
 async def start_main_download():
@@ -318,3 +343,8 @@ if __name__ == "__main__":
     asyncio.run(get_main_urls())
     exit(0)
     asyncio.run(start_main_download())
+
+
+
+
+
