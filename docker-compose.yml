@@ -42,5 +42,5 @@ services:
       -  mongo
     ports:
       - 3333:80
-    enviroment:
+    environment:
       MONGO-DB-URL: mongodb://${MONGO-DB-USR}:${MONGO-DB-PASSWD}@mongo:27017/
