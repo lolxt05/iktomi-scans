@@ -9,6 +9,6 @@ COPY . .
 
 #COPY ./bin/controller.py ./
 
-COPY ./bin/scrapers/night-scraper.py ./controller.py
+COPY ./bin/scrapers/asura-scraper.py ./controller.py
 
 CMD [ "python", "controller.py" ]

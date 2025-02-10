@@ -4,3 +4,9 @@ testen
 und 
 
 fetch_urls_from_page aus matsya scans stehlen
+
+get_main_urls in night scrapter fixen damit en ned erneut scarpt und erst späterstartet
+
+irgendwas wegneg proxys oder so was machen night schiebt stress
+
+und main download in beiden fertig machen

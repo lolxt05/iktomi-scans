@@ -154,7 +154,7 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     logging.info(f"fetch manhwa all chapters called for {name}")
     
     chapter_num = 0
-    manhwa_db = await get_asura_main_urls_db()[name]
+    manhwa_db = (await get_asura_main_urls_db())[name]
     
     try:
         existing_chapters = await manhwa_db.distinct("chapter")
@@ -165,8 +165,8 @@ async def fetch_manhwa_all_chapters(name, initial_url):
         logging.info(f"Existing chapters found in db starting fetch at chapter {chapter_num}")
     except Exception as e:
         logging.error(f"No existing chapters found in db. Starting fetch at chapter 0. \n Error: \n {e}")
-        chapter_num = 0
-
+        chapter_num = -1
+    chapter_num += 1
     logging.info(f"current manhwa is {name}, starting at chapter {chapter_num}")
     consecutive_empty_pages = 0
     total_urls = 0
@@ -300,9 +300,11 @@ async def main():
     # exit(0)
     logging.info("Program started")
     await get_initial_urls()
-    await start_main_download()
+    await get_main_urls()
+    exit(0)
+    await start_main_download() # not finnished
 
 if __name__ == "__main__":
     #asyncio.run(main())
     #exit(0)
-    asyncio.run(start_main_download())
+    asyncio.run(main())

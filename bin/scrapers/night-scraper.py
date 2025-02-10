@@ -89,7 +89,7 @@ async def get_cache(cache_to_acsess):
 async def read_cache_json(cache_to_access):
     logging.info(f"get cache for {cache_to_access} called")
     db = client.cache
-    doc = await db[cache_to_access].find_one()  # Use await here
+    doc = await db[cache_to_access].find_one()
     if doc and "_id" in doc:
         doc.pop("_id")
     return doc
@@ -296,10 +296,9 @@ async def get_all_downloaded_chapters(manhwa):
     return await db[manhwa].distinct("chapter")
 
 async def full_comparing_and_fetching_of_a_manhwa(manhwa):
-    main_urls_db = await get_night_main_urls_db()
     manhwa = "eleceed"
-    manhwa_to_download = main_urls_db[manhwa]
-    
+    manhwa_to_download = (await get_night_main_urls_db())[manhwa]
+
     chapter_number = 0
     try:
         consecutive_no_urls = 0
@@ -334,13 +333,14 @@ async def main():
     # exit(0)
     logging.info("Program started")
     await get_initial_urls()
+    await get_main_urls()
     #await start_main_download()
     exit(0)
 
 if __name__ == "__main__":
     #asyncio.run(main())
     #exit(0)
-    asyncio.run(get_main_urls())
+    asyncio.run(main())
     exit(0)
     asyncio.run(start_main_download())
 
