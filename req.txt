@@ -5,3 +5,4 @@ pymongo
 motor
 aiohttp
 mmh3
+gunicorn

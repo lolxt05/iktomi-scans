@@ -3,14 +3,13 @@ FROM python:3.13.1-slim-bookworm
 WORKDIR /usr/src/app
 
 COPY req.txt ./
-RUN pip install --no-cache-dir -r req.txt
+
+RUN pip3 install --upgrade pip
+
+RUN pip3 install -r ./req.txt
 
 COPY . .
 
-#COPY ./bin/controller.py ./
-EXPOSE 80
+EXPOSE 8080
 
-COPY  ./bin/server.py ./server.py
-COPY  ./gunicorn.conf.py ./gunicorn.conf.py
-
-CMD [ "python", "controller.py" ]
+CMD ["gunicorn","--config", "gunicorn_config.py" , "app:app"]

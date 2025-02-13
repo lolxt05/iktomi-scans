@@ -16,7 +16,7 @@ import mmh3
 import random
 
 client = AsyncIOMotorClient(os.environ.get("MONGO-DB-URL"))
-semaphore = asyncio.Semaphore(5)
+semaphore = asyncio.Semaphore(1)
 
 python_name = os.path.basename(__file__)
 
@@ -186,11 +186,16 @@ async def fetch_manhwa_all_chapters(name, initial_url):
 
 
     sorted_chapters = sorted(urls, key=lambda s: int(re.findall(r'\d+', s)[-1]))
-
-    
-    logging.info(name + " got all urls total urls count: " + str(len(sorted_chapters)))
-
-    logging.info(f"current manhwa is {name}, starting at chapter {sorted_chapters[0]} and the manhwa goes to {sorted_chapters[-1]} max")
+    chapter_urls = []
+    for chapter in sorted_chapters:
+        if chapter not in chapter_urls and name in chapter:
+            chapter_urls.append(chapter)
+        else:
+            continue
+    sorted_chapters = chapter_urls
+    if sorted_chapters is []:
+        return
+    logging.info(f"current manhwa is {name}, starting at chapter {sorted_chapters[0]} and the manhwa goes to {sorted_chapters[-1]} max total urls = {len(sorted_chapters)}")    
 
     tasks = []
     for chapter_url in sorted_chapters:
@@ -227,6 +232,9 @@ async def get_main_urls():
     t_get_main_urls = time.process_time()
     logging.info("get main url called")
     night_init_urls = await read_cache_json("night_init_urls")
+    if night_init_urls == None:
+        logging.error("no urls found in the cache / idk why thougth at function get main urls")
+        return 
     logging.info(f"asurascans all manhwas number = ${len(night_init_urls)}")
     for name, url in night_init_urls.items():
         await fetch_manhwa_all_chapters(name, url)
