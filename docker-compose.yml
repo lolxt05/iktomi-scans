@@ -1,8 +1,8 @@
 services:
   mongo:
+    container_name: iktomi-db
     image: mongo
     restart: always
-    container_name: iktomi-db
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO-DB-USR}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO-DB-PASSWD}
@@ -12,9 +12,9 @@ services:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
 
   mongo-express:
+    container_name: iktomi-mongo-express
     image: mongo-express
     restart: always
-    container_name: iktomi-mongo-express
     ports:
       - 8081:8081
     environment:
@@ -27,6 +27,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.controller
+    container_name: iktomi-controller
     depends_on:
       - mongo
     ports:

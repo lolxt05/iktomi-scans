@@ -10,3 +10,6 @@ get_main_urls in night scrapter fixen damit en ned erneut scarpt und erst späte
 irgendwas wegneg proxys oder so was machen night schiebt stress
 
 und main download in beiden fertig machen
+
+update_asura_blacklist_urls_cache
+and integrate it for asurascans to find dupes ans also find a way to reduce the ammount of wrong banners

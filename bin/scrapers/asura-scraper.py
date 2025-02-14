@@ -13,11 +13,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 import aiohttp
 import mmh3
+import collections
 
 client = AsyncIOMotorClient(os.environ.get("MONGO-DB-URL"))
 semaphore = asyncio.Semaphore(30)
 
 python_name = os.path.basename(__file__)
+
+
 
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
@@ -34,7 +37,7 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler]
 
 """
     differnt vars 
-    asura_init_urls = get_cache("asura_init_urls")
+    asura_init_urls = get_asura_cache("asura_init_urls")
 """
 
 async def get_initial_urls_from_page(page_count):
@@ -68,7 +71,7 @@ async def get_initial_urls():
             for link in links:
                 all_links["-".join(link.rstrip("/").split("/")[-1].split("-")[:-1])] = domain_url + link
 
-    asura_cache = await get_cache("asura_init_urls")
+    asura_cache = await get_asura_cache("asura_init_urls")
     asura_cache.delete_one({})
     asura_cache.insert_one(all_links)
     end_page_num = int(page_count) - int(consecutive_empty_count)
@@ -76,7 +79,7 @@ async def get_initial_urls():
     logging.info(f"get initai urls ended total pages ${end_page_num} and total individual urls = ${total_link_count}")
     return
 
-async def get_cache(cache_to_acsess):
+async def get_asura_cache(cache_to_acsess):
     logging.info(f"get cache for ${cache_to_acsess} called")
     cache = client.cache
     specific_cache = cache[cache_to_acsess]
@@ -171,6 +174,8 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     consecutive_empty_pages = 0
     total_urls = 0
     items_to_insert = []
+    blacklist_urls_cache = await get_asura_cache("asura_blacklist_urls")
+    blacklist_urls = await do_find(blacklist_urls_cache.find({}))
     while consecutive_empty_pages < 5:
         urls = await fetch_urls_from_page(initial_url + f"/chapter/{chapter_num}")
         if urls is None:
@@ -178,9 +183,10 @@ async def fetch_manhwa_all_chapters(name, initial_url):
         else:
             index = 0
             for url in urls:
-                items_to_insert.append({"index": index, "url": url, "chapter": f"chapter_{chapter_num}"})
-                index += 1
-                total_urls += 1
+                if url not in blacklist_urls:
+                    items_to_insert.append({"index": index, "url": url, "chapter": f"chapter_{chapter_num}"})
+                    index += 1
+                    total_urls += 1
             consecutive_empty_pages = 0
         chapter_num += 1
     if items_to_insert != []:
@@ -218,7 +224,7 @@ async def start_main_download():
 
 async def do_find(cursor):
     list = []
-    for document in await cursor.to_list(length=100):
+    for document in await cursor.to_list(length=100000000):
         list.append(document)
     return list
 
@@ -264,9 +270,8 @@ async def get_all_downloaded_chapters(manhwa):
     return await db[manhwa].distinct("chapter")
 
 async def full_comparing_and_fetching_of_a_manhwa(manhwa):
-    main_urls_db = await get_asura_main_urls_db()
-    manhwa = "a-comic-artists-survival-guide"
-    manhwa_to_download = main_urls_db[manhwa]
+    manhwa = "golden-mage"
+    manhwa_to_download = (await get_asura_main_urls_db())[manhwa]
     
     chapter_number = 0
     try:
@@ -293,11 +298,24 @@ async def full_comparing_and_fetching_of_a_manhwa(manhwa):
     except Exception as e:
         logging.error("full_comparing_and_fetching_of_a_manhwa failed because: " + str(e))
 
+async def update_asura_blacklist_urls_cache():
+    main_urls = await get_asura_main_urls_db()
+    all_collections = await main_urls.list_collection_names()
+    all_urls = []
+    for collection in all_collections:
+        for doc in await do_find(main_urls[collection].find({})):
+            all_urls.append(doc["url"])
+    logging.info(len(all_urls))
+    [item for item, count in collections.Counter(all_urls).items() if count > 1]
+
+
 async def main():
     # manhwa = "taming-master"
     # exit(0)
     # await start_main_download()
     # exit(0)
+    await update_asura_blacklist_urls_cache()
+    exit(0)
     logging.info("Program started")
     await get_initial_urls()
     await get_main_urls()
