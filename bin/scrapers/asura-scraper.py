@@ -228,7 +228,6 @@ async def start_main_download():
     for manhwa in manhwa_collection_names:
         #print(manhwa +": "+ str(await get_max_chapter_number(manhwa)))
         await full_comparing_and_fetching_of_a_manhwa(manhwa)
-        exit(0)
 
 async def do_find(cursor):
     list = []
@@ -298,7 +297,7 @@ async def full_comparing_and_fetching_of_a_manhwa(manhwa):
                 chapter_number += 1
             else:
                 if consecutive_no_urls <= 10000:
-                    consecutive_no_urls +=1
+                    consecutive_no_urls += 1
                     chapter_number += 1
                 else:
                     break
@@ -328,7 +327,6 @@ async def main():
     await get_initial_urls()
     await get_main_urls()
     await update_asura_blacklist_urls_cache()
-    exit(0)
     await start_main_download() # not finnished
 
 if __name__ == "__main__":
