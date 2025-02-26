@@ -174,8 +174,14 @@ async def fetch_manhwa_all_chapters(name, initial_url):
     consecutive_empty_pages = 0
     total_urls = 0
     items_to_insert = []
-    blacklist_urls_cache = await get_asura_cache("asura_blacklist_urls")
-    blacklist_urls = await do_find(blacklist_urls_cache.find({}))
+
+    blacklist_cache = await get_asura_cache("asura_blacklist")
+    for doc in await do_find(blacklist_cache.find({})):
+        blacklist_urls_dict = doc
+    blacklist_urls_dict.pop('_id')
+    blacklist_urls = []
+    for value in blacklist_urls_dict.values():
+        blacklist_urls.append(value)
     while consecutive_empty_pages < 5:
         urls = await fetch_urls_from_page(initial_url + f"/chapter/{chapter_num}")
         if urls is None:
@@ -201,7 +207,9 @@ async def fetch_manhwa_all_chapters(name, initial_url):
 async def get_main_urls():
     t_get_main_urls = time.process_time()
     logging.info("get main url called")
-    asura_init_urls = await read_cache_json("asura_init_urls")
+    asura_init_urls = None
+    while asura_init_urls == None:
+        asura_init_urls = await read_cache_json("asura_init_urls")
     logging.info(f"asurascans all manhwas number = ${len(asura_init_urls)}")
     for name, url in asura_init_urls.items():
         await fetch_manhwa_all_chapters(name, url)
@@ -224,7 +232,7 @@ async def start_main_download():
 
 async def do_find(cursor):
     list = []
-    for document in await cursor.to_list(length=100000000):
+    for document in await cursor.to_list(length=1000000000):
         list.append(document)
     return list
 
@@ -242,7 +250,7 @@ async def download_a_chapter(db , collection_name, manhwa):
         try:
             await manhwa_db.insert_many(chapter_data , ordered=False)
         except BulkWriteError as bwe:
-            logging.error("BulkWriteError why did this happen pleas look for me if more than sometimes im at download_a_chapter in asura-scraper.py")      
+            logging.error("BulkWriteError why did this happen pleas look for me if more than sometimes im at download_a_chapter in asura-scraper.py")
 
     except Exception as e:
         logging.error("Error with semaphore / semaphore Error at asura-scraper.py at the : download_a_chapter function :"+ str(type(e)))
@@ -306,7 +314,9 @@ async def update_asura_blacklist_urls_cache():
         for doc in await do_find(main_urls[collection].find({})):
             all_urls.append(doc["url"])
     logging.info(len(all_urls))
-    [item for item, count in collections.Counter(all_urls).items() if count > 1]
+    blacklist_cache = await get_asura_cache("asura_blacklist")
+    await blacklist_cache.insert_one({str(index): value for index, value in enumerate([item for item, count in collections.Counter(all_urls).items() if count > 1])})
+
 
 
 async def main():
@@ -314,11 +324,10 @@ async def main():
     # exit(0)
     # await start_main_download()
     # exit(0)
-    await update_asura_blacklist_urls_cache()
-    exit(0)
     logging.info("Program started")
     await get_initial_urls()
     await get_main_urls()
+    await update_asura_blacklist_urls_cache()
     exit(0)
     await start_main_download() # not finnished
 
