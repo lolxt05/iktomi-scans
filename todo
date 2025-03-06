@@ -1,0 +1,15 @@
+fetch_manhwa_all_chapters
+testen
+
+und 
+
+fetch_urls_from_page aus matsya scans stehlen
+
+get_main_urls in night scrapter fixen damit en ned erneut scarpt und erst späterstartet
+
+irgendwas wegneg proxys oder so was machen night schiebt stress
+
+und main download in beiden fertig machen
+
+update_asura_blacklist_urls_cache
+and integrate it for asurascans to find dupes ans also find a way to reduce the ammount of wrong banners

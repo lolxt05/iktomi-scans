@@ -1,0 +1,8 @@
+flask
+BeautifulSoup4
+requests
+pymongo
+motor
+aiohttp
+mmh3
+gunicorn

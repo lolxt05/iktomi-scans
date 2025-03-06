@@ -1,0 +1,14 @@
+FROM python:3.13.1-slim-bookworm
+
+WORKDIR /usr/src/app
+
+COPY req.txt ./
+RUN pip install --no-cache-dir -r req.txt
+
+COPY . .
+
+#COPY ./bin/controller.py ./
+
+COPY ./bin/scrapers/asura-scraper.py ./controller.py
+
+CMD [ "python", "controller.py" ]
